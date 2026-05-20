@@ -7,6 +7,11 @@ RUN apk update && apk add --no-cache ca-certificates tzdata
 # 设置工作目录
 WORKDIR /app
 
+# 设置 Go 代理和环境变量
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+ENV GO111MODULE=on
+
 # 将 go.mod 和 go.sum 文件复制到工作目录
 COPY go.mod go.sum ./
 

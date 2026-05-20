@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  auditlimit:
+    image: charwin00/soruxgpt-saas-audit
+    restart: always
+    ports:
+      - 9612:8080
+    environment:
+      PORT: 8080
+      OAUTH: 'http://154.64.230.196:9862/api/auth/oauth'
+      AuthUrlMap: "share.gptpanda.net=chat2.gptpanda.net,share.gptcat.cc=chat2.gptcat.cc"
+      GPT-4O-MINI: "120/3h"
+      GPT-4O: "80/3h"
+      GPT-4: "20/3h"
+      GPT-4-5: "10/24h"
+      GPT-4O-CANMORE: "30/3h"
+      O3: "10/24h"
+      O4-MINI: "50/3h"
+      O4-MINI-HIGH: "10/24h"
+      TEST: "1/1h"

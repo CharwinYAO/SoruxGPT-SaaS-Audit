@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"github.com/gogf/gf/v2/container/garray"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -16,6 +17,8 @@ var (
 	PlusModels       = garray.NewStrArrayFrom([]string{"gpt-4", "gpt-4o", "gpt-4-browsing", "gpt-4-plugins", "gpt-4-mobile", "gpt-4-code-interpreter", "gpt-4-dalle", "gpt-4-gizmo", "gpt-4-magic-create", "o1-preview", "o1-mini", "video_gen", "o1", "o1-pro"})
 	AdminApiKey      = ""
 	SyncAdmitPostUrl = ""
+	OAUTH			 = ""
+	AuthUrlMap       = make(map[string]string)
 )
 
 func init() {
@@ -56,4 +59,26 @@ func init() {
 		SyncAdmitPostUrl = syncAdmitPostUrl
 	}
 	g.Log().Info(ctx, "SYNC_ADMIT_POST_URL:", SyncAdmitPostUrl)
+
+	oauth := g.Cfg().MustGetWithEnv(ctx, "OAUTH").String()
+	if oauth != "" {
+		OAUTH = oauth
+	}
+	g.Log().Info(ctx, "OAUTH:", OAUTH)
+
+    // 格式: "share.gptpanda.net=chat2.gptpanda.net,share2.example.com=auth2.example.com"
+    authMapping := g.Cfg().MustGetWithEnv(ctx, "AUTHURL_MAP").String()
+	g.Log().Info(ctx, "authMapping:", authMapping)
+    if authMapping != "" {
+        pairs := strings.Split(authMapping, ",")
+        for _, pair := range pairs {
+            kv := strings.Split(pair, "=")
+            if len(kv) == 2 {
+                AuthUrlMap[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+            }
+        }
+    }
+	g.Log().Info(ctx, "AuthUrlMap:", AuthUrlMap)
+
+
 }

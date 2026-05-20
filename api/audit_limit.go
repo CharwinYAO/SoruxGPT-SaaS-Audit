@@ -2,6 +2,7 @@ package api
 
 import (
 	"auditlimit/config"
+	"net/url"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/util/gconv"
+	"github.com/gogf/gf/v2/errors/gerror"
 )
 
 func AuditLimit(r *ghttp.Request) {
@@ -45,14 +47,27 @@ func AuditLimit(r *ghttp.Request) {
 	prompt := reqJson.Get("messages.0.content.parts.0").String()
 	g.Log().Debug(ctx, "prompt", prompt)
 
+	// 根据referer获取对应的鉴权地址
+	authUrl, err := getAuthUrlFromReferer(ctx, referer)
+	if err != nil {
+		g.Log().Error(ctx, "getAuthUrlFromReferer", err)
+		r.Response.Status = 400
+		r.Response.WriteJson(g.Map{
+			"detail": g.Map{
+				"message": "Invalid referer or auth configuration.",
+			},
+		})
+		return
+	}
+	g.Log().Debug(ctx, "authUrl", authUrl)
+
+
 	// 下面开始判断用户状态
 	resp, err := g.Client().SetHeaderMap(g.MapStrStr{
-		"apiauth":      config.AdminApiKey,
 		"Content-Type": "application/json",
-	}).Post(ctx, config.ShareUrl+"/adminapi/chatgpt/user/page", g.Map{
-		"keyWord": token,
-		"page":    1,
-		"size":    20,
+	}).Post(ctx, config.OAUTH, g.Map{
+		"ticket": token,
+		"targetUrl": authUrl,
 	})
 	if err != nil {
 		g.Log().Error(ctx, "GetJson", err)
@@ -64,52 +79,13 @@ func AuditLimit(r *ghttp.Request) {
 		})
 		return
 	}
-	respJson := gjson.New(resp.ReadAllString())
-	if len(respJson.Get("data.list").Array()) == 0 {
+	// 检查HTTP状态码，如果不是200则认为会员已过期
+	if resp.StatusCode != 200 {
+		g.Log().Warning(ctx, "Auth failed, status code:", resp.StatusCode)
 		r.Response.Status = 401
 		r.Response.WriteJson(g.Map{
 			"detail": g.Map{
-				"message": "无效的激活码",
-			},
-		})
-		return
-	}
-
-	if respJson.Get("data.list.0.userToken").String() != token {
-		r.Response.Status = 200
-		r.Response.WriteJson(g.Map{
-			"detail": g.Map{
-				"message": "无效的激活码",
-			},
-		})
-		return
-	}
-
-	if !respJson.Get("data.list.0.deleted_at").IsNil() {
-		r.Response.Status = 200
-		r.Response.WriteJson(g.Map{
-			"code": 0,
-			"msg":  "激活码已被删除！",
-		})
-		return
-	}
-
-	if respJson.Get("data.list.0.expireTime").Time().Before(time.Now()) {
-		r.Response.Status = 200
-		r.Response.WriteJson(g.Map{
-			"code": 0,
-			"msg":  "激活码已过期！",
-		})
-		return
-	}
-
-	plusMode := respJson.Get("data.list.0.isPlus").Bool()
-
-	if !plusMode && config.PlusModels.Contains(model) {
-		r.Response.Status = 401
-		r.Response.WriteJson(g.Map{
-			"detail": g.Map{
-				"message": "普通激活码无法使用 4o 或者是 o1 模型，请使用 gpt-4o-mini",
+				"message": "会员已过期",
 			},
 		})
 		return
@@ -189,6 +165,37 @@ func AuditLimit(r *ghttp.Request) {
 
 	r.Response.Status = 200
 
+}
+
+// 根据referer获取对应的鉴权地址
+func getAuthUrlFromReferer(ctx g.Ctx, referer string) (string, error) {
+	if referer == "" {
+		return "", gerror.New("Referer is empty")
+	}
+	// 解析referer URL
+	parsedUrl, err := url.Parse(referer)
+	if err != nil {
+		g.Log().Error(ctx, "Parse referer URL error", err)
+		return "", err
+	}
+
+	host := parsedUrl.Host
+	g.Log().Debug(ctx, "referer host", host)
+
+	// 在配置的映射中查找对应的鉴权地址
+	if authHost, exists := config.AuthUrlMap[host]; exists {
+		// 构建完整的鉴权地址
+		scheme := "https"
+		if parsedUrl.Scheme == "http" {
+			scheme = "http"
+		}
+		authUrl := scheme + "://" + authHost
+		return authUrl, nil
+	}
+
+	// 如果没有找到映射，使用默认的ShareUrl
+	g.Log().Warning(ctx, "No auth mapping found for host:", host, "using default ShareUrl")
+	return "", gerror.New("No auth mapping found for host")
 }
 
 // 判断字符串是否包含数组中的任意一个元素
