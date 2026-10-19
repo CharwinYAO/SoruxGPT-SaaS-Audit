@@ -9,6 +9,7 @@ services:
       PORT: 8080
       OAUTH: 'http://154.64.230.196:9862/api/auth/oauth'
       AuthUrlMap: "share.gptpanda.net=chat2.gptpanda.net,share.gptcat.cc=chat2.gptcat.cc"
+      POST_BILLING: true
       GPT-4O-MINI: "120/3h"
       GPT-4O: "80/3h"
       GPT-4: "20/3h"

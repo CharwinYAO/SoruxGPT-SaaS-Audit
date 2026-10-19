@@ -2,6 +2,8 @@ package config
 
 import (
 	"strings"
+	"time"
+
 	"github.com/gogf/gf/v2/container/garray"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -19,6 +21,32 @@ var (
 	SyncAdmitPostUrl = ""
 	OAUTH			 = ""
 	AuthUrlMap       = make(map[string]string)
+
+	// ReservationTTL bounds how long a pre-debited reservation may live before
+	// the cleanup goroutine commits it (per the timeout=commit policy: tokens
+	// stay debited, the reservation entry is just dropped).
+	// Streaming conversations can run for hours, so default to 24h.
+	ReservationTTL = 24 * time.Hour
+
+	// PostBilling switches the debit moment from pre-call to post-call.
+	//
+	//   false (default) — original pre-billing semantics: AuditLimit calls
+	//     Take() up-front, AuditLimitAfter is a no-op commit, AuditLimitRelease
+	//     refunds. The sweeper's drop-on-timeout = "platform keeps the debit"
+	//     (protects billing if /after never arrives).
+	//
+	//   true — post-billing: AuditLimit does NOT call Take(); it only runs
+	//     auth/moderation/soft-quota checks and registers a reservation.
+	//     AuditLimitAfter performs the actual Take() at commit time. If the
+	//     /after callback never arrives (sweeper timeout, or AuditLimitRelease
+	//     fires) NOTHING is debited — the user is not charged for the failed
+	//     conversation. This is "没收到后调成功的指令，就不进行扣费".
+	//
+	// Tradeoff: in post-billing mode the pre-call quota check is a soft check
+	// only (Tokens() < 1) — under heavy concurrency a few requests may slip
+	// past the soft check and only fail at /after. Acceptable for chat-style
+	// workloads, where requests-per-user are naturally serialized.
+	PostBilling = false
 )
 
 func init() {
@@ -80,5 +108,29 @@ func init() {
     }
 	g.Log().Info(ctx, "AuthUrlMap:", AuthUrlMap)
 
+	reservationTTL := g.Cfg().MustGetWithEnv(ctx, "RESERVATION_TTL").String()
+	if reservationTTL != "" {
+		if d, err := time.ParseDuration(reservationTTL); err == nil && d > 0 {
+			ReservationTTL = d
+		} else {
+			g.Log().Warning(ctx, "RESERVATION_TTL parse failed, keep default:", ReservationTTL, "err:", err)
+		}
+	}
+	g.Log().Info(ctx, "ReservationTTL:", ReservationTTL)
 
+	// POST_BILLING: env-driven toggle. Accepts the typical truthy strings
+	// (`true`, `1`, `yes`, `on`); anything else (including unset) leaves
+	// PostBilling=false so the default behaviour stays pre-billing.
+	postBilling := g.Cfg().MustGetWithEnv(ctx, "POST_BILLING").String()
+	if postBilling != "" {
+		switch strings.ToLower(strings.TrimSpace(postBilling)) {
+		case "1", "true", "yes", "on":
+			PostBilling = true
+		case "0", "false", "no", "off":
+			PostBilling = false
+		default:
+			g.Log().Warning(ctx, "POST_BILLING unrecognized value, keep default(false):", postBilling)
+		}
+	}
+	g.Log().Info(ctx, "PostBilling:", PostBilling)
 }

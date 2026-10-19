@@ -15,6 +15,8 @@ func main() {
 	s.SetPort(config.PORT)
 	s.BindHandler("/", Index)
 	s.BindHandler("/audit_limit", api.AuditLimit)
+	s.BindHandler("/audit_limit/after", api.AuditLimitAfter)
+	s.BindHandler("/audit_limit/release", api.AuditLimitRelease)
 	s.Run()
 }
 
